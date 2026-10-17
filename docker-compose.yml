@@ -1,0 +1,9 @@
+services:
+  frontend:
+    build: ./app/frontend
+    ports: ["8080:8080"]
+    depends_on: [catalog-service, orders-service]
+  catalog-service:
+    build: ./app/catalog
+  orders-service:
+    build: ./app/orders

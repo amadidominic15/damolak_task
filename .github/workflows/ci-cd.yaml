@@ -1,0 +1,78 @@
+name: CI and deploy to EKS
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+  ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
+jobs:
+  test-build-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test catalog API
+        run: node --test app/catalog/server.test.js
+      - name: Test orders API
+        run: node --test app/orders/server.test.js
+      - name: Build all images
+        run: |
+          docker build -t shoplite-frontend:${{ github.sha }} app/frontend
+          docker build -t shoplite-catalog:${{ github.sha }} app/catalog
+          docker build -t shoplite-orders:${{ github.sha }} app/orders
+      - name: Scan repository
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+      - name: Scan frontend image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: shoplite-frontend:${{ github.sha }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test-build-scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push images
+        shell: bash
+        run: |
+          set -euo pipefail
+          for service in frontend catalog orders; do
+            docker build -t "$ECR_REGISTRY/shoplite/$service:$GITHUB_SHA" "app/$service"
+            docker push "$ECR_REGISTRY/shoplite/$service:$GITHUB_SHA"
+          done
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME"
+      - name: Apply namespace and services
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/services.yaml
+      - name: Apply deployments with immutable image tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -e "s|REPLACE_ECR_REGISTRY|$ECR_REGISTRY|g" -e "s|REPLACE_TAG|$GITHUB_SHA|g" k8s/deployments.yaml | kubectl apply -f -
+          kubectl rollout status deployment/catalog-service -n shoplite --timeout=240s
+          kubectl rollout status deployment/orders-service -n shoplite --timeout=240s
+          kubectl rollout status deployment/frontend -n shoplite --timeout=240s

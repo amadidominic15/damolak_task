@@ -1,0 +1,27 @@
+namespace: shoplite
+imageRegistry: 092620891680.dkr.ecr.eu-north-1.amazonaws.com/damolak
+
+frontend:
+  deploymentname: frontend-deployment
+  servicename: frontend-service
+  image: 092620891680.dkr.ecr.eu-north-1.amazonaws.com/cloudkitchen-registry/frontend-service:2fec561
+  replicas: 2
+  port: 8080
+
+
+catalogService:
+  deploymentname: catalogue-service-deployment
+  servicename: catalogue-service
+  image: 092620891680.dkr.ecr.eu-north-1.amazonaws.com/damolak/catalogue-service:2fec561
+  replicas: 2
+  port: 3000
+
+ordersService:
+  deploymentname: orders-service-deployment
+  servicename: orders-service
+  image: 092620891680.dkr.ecr.eu-north-1.amazonaws.com/damolak/orders-service:2fec561
+  replicas: 2
+  port: 3001
+
+ingress:
+  enabled: false
