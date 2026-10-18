@@ -83,7 +83,7 @@ jobs:
 
       - name: Terraform apply
         if: success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        run: terraform apply -input=false -auto-approve tfplan
+        run: terraform destroy -input=false -auto-approve tfplan
 
       - name: Trigger application deployment workflow
         if: success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'

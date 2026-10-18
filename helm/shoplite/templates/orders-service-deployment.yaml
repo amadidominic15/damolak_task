@@ -23,7 +23,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: orders
-          image: {{ .Values.ordersService.image.repsitory }}:{{ .Values.ordersService.image.tag }}
+          image: {{ .Values.ordersService.image.repository }}:{{ .Values.ordersService.image.tag }}
           ports:
             - name: http
               containerPort: {{ .Values.ordersService.port }}
