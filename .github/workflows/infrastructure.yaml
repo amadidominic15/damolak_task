@@ -49,7 +49,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Set up Trivy
-        uses: aquasecurity/setup-trivy@v0.36.0
+        uses: aquasecurity/trivy-action@master
         with:
           cache: true
           scan-type: config
