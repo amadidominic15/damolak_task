@@ -47,10 +47,10 @@ module "eks" {
 }
 
 module "iam" {
-  source                          = "./terraform/modules/iam"
-  cluster_name                    = var.cluster_name
-  enable_vpc_cni                  = true
-  enable_cloudwatch               = true
+  source            = "./terraform/modules/iam"
+  cluster_name      = var.cluster_name
+  enable_vpc_cni    = true
+  enable_cloudwatch = true
 
 
 }

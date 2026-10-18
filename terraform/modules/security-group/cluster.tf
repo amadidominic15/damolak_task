@@ -19,10 +19,10 @@ resource "aws_security_group" "eks_nodes" {
   description = "Security group for EKS worker nodes"
   vpc_id      = var.vpc_id
   tags = {
-    Name = "${var.cluster_name}-nodes-sg"
-      "karpenter.sh/discovery" = "${var.cluster_name}-${var.environment}-cluster"
-    }
+    Name                     = "${var.cluster_name}-nodes-sg"
+    "karpenter.sh/discovery" = "${var.cluster_name}-${var.environment}-cluster"
   }
+}
 
 # ============================================================
 # CLUSTER INGRESS RULES
