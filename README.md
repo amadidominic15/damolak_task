@@ -67,3 +67,5 @@ Container stdout/stderr is available through `kubectl logs`. For managed metrics
 - HTTP-only public NLB; use TLS, DNS, WAF/edge controls as appropriate.
 - The GitHub deployment role has cluster-admin access scoped to the exact repository and main branch for straightforward challenge deployment. A production implementation should use least-privilege Kubernetes RBAC, GitHub Environment approvals, protected branches, pinned third-party Actions by full commit SHA, image signing, SBOMs, policy checks, and separated infrastructure/application roles.
 - Use GitHub OIDC  in place of AWS Credentials
+- set exit-code: "1" for production deployment
+
