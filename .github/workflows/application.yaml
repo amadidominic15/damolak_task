@@ -149,7 +149,9 @@ jobs:
           push: false
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ matrix.service }}:${{ steps.image.outputs.tag }}
-
+          cache-from: type=gha,scope=shoplite-${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=shoplite-${{ matrix.service }
+          
       - name: Scan Docker image
         uses: aquasecurity/trivy-action@master
         with:

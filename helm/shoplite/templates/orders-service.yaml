@@ -4,7 +4,7 @@ metadata:
   name: {{ .Values.ordersService.servicename }}
   namespace: {{ .Values.namespace }}
 spec:
-  type: clusterIP
+  type: ClusterIP
   selector:
     app: orders-service
   ports:
