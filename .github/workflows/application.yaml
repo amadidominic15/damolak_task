@@ -1,0 +1,303 @@
+
+name: ShopLite Application CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "app/**"
+      - ".github/workflows/application.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shoplite-application-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-north-1
+
+jobs:
+  resolve-source:
+    name: Resolve Application Source
+    runs-on: ubuntu-latest
+
+    outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Resolve source commit
+        id: source
+        run: |
+          set -euo pipefail
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  test-and-scan:
+    name: Test and Scan Applications
+    needs: resolve-source
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: true
+      matrix:
+        service:
+          - catalog
+          - frontend
+          - orders
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-source.outputs.source_sha }}
+
+      - name: Set up Node.js
+        if: matrix.service != 'frontend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/${{ matrix.service }}/package-lock.json
+
+      - name: Install dependencies
+        if: matrix.service != 'frontend'
+        working-directory: app/${{ matrix.service }}
+        run: npm ci
+
+      - name: Run tests
+        if: matrix.service != 'frontend'
+        working-directory: app/${{ matrix.service }}
+        run: npm test --if-present
+
+      - name: Build application
+        if: matrix.service != 'frontend'
+        working-directory: app/${{ matrix.service }}
+        run: npm run build --if-present
+
+      - name: Scan source code
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scan-ref: app/${{ matrix.service }}
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"
+
+  build-scan-push:
+    name: Build, Scan and Push Images
+    needs:
+      - resolve-source
+      - test-and-scan
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: true
+      matrix:
+        service:
+          - catalog
+          - frontend
+          - orders
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-source.outputs.source_sha }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set image tag
+        id: image
+        env:
+          SOURCE_SHA: ${{ needs.resolve-source.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          echo "tag=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: app/${{ matrix.service }}
+          file: app/${{ matrix.service }}/Dockerfile
+          load: true
+          push: false
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ matrix.service }}:${{ steps.image.outputs.tag }}
+
+      - name: Scan Docker image
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ matrix.service }}:${{ steps.image.outputs.tag }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"
+
+      - name: Push scanned image to ECR
+        env:
+          IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ matrix.service }}:${{ steps.image.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker push "$IMAGE"
+
+  update-helm:
+    name: Update Helm Image Tags
+    needs:
+      - resolve-source
+      - build-scan-push
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install yq
+        run: |
+          set -euo pipefail
+
+          YQ_VERSION="v4.45.1"
+
+          sudo wget -q \
+            -O /usr/local/bin/yq \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Update Helm image tags
+        env:
+          IMAGE_TAG: ${{ needs.resolve-source.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+
+          VALUES_FILE="helm/shoplite/values.yaml"
+          test -f "$VALUES_FILE"
+
+          yq -i '.frontend.image.tag = strenv(IMAGE_TAG)' "$VALUES_FILE"
+          yq -i '.catalogService.image.tag = strenv(IMAGE_TAG)' "$VALUES_FILE"
+          yq -i '.ordersService.image.tag = strenv(IMAGE_TAG)' "$VALUES_FILE"
+
+          echo "Updated image tags:"
+          yq '{
+            frontend: .frontend.image.tag,
+            catalog: .catalogService.image.tag,
+            orders: .ordersService.image.tag
+          }' "$VALUES_FILE"
+
+      - name: Commit Helm changes
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add helm/shoplite/values.yaml
+
+          if git diff --cached --quiet; then
+            echo "No Helm changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore(gitops): update ShopLite image tags"
+          git push origin HEAD:main
+
+  deploy:
+    name: Deploy ShopLite with Helm
+    needs:
+      - update-helm
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout updated Helm configuration
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        env:
+          EKS_CLUSTER_NAME: shoplite-dev-cluster
+        run: |
+          set -euo pipefail
+
+          aws eks update-kubeconfig \
+            --region "$AWS_REGION" \
+            --name "$EKS_CLUSTER_NAME"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
+
+      - name: Verify cluster access
+        run: |
+          set -euo pipefail
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Validate Helm chart
+        run: |
+          set -euo pipefail
+          helm lint helm/shoplite
+
+          helm template shoplite helm/shoplite \
+            --namespace shoplite
+
+      - name: Deploy ShopLite
+        run: |
+          set -euo pipefail
+
+          helm upgrade --install shoplite helm/shoplite \
+            --namespace shoplite \
+            --create-namespace \
+            --wait \
+            --timeout 10m \
+            --atomic
+
+      - name: Verify deployment
+        run: |
+          set -euo pipefail
+
+          helm status shoplite --namespace shoplite
+          kubectl get deployments,pods,services --namespace shoplite

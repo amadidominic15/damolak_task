@@ -1,5 +1,5 @@
 module "vpc" {
-  source                         = "./modules/vpc"
+  source                         = "./terraform/modules/vpc"
   environment                    = var.environment
   cluster_name                   = var.cluster_name
   aws_region                     = var.aws_region
@@ -12,7 +12,7 @@ module "vpc" {
 }
 
 module "security_group" {
-  source       = "./modules/security-group"
+  source       = "./terraform/modules/security-group"
   cluster_name = var.cluster_name
   environment  = var.environment
   vpc_id       = module.vpc.vpc_id
@@ -20,7 +20,7 @@ module "security_group" {
 }
 
 module "eks" {
-  source                      = "./modules/eks"
+  source                      = "./terraform/modules/eks"
   cluster_name                = var.cluster_name
   environment                 = var.environment
   kubernetes_version          = var.kubernetes_version
@@ -47,17 +47,15 @@ module "eks" {
 }
 
 module "iam" {
-  source                          = "./modules/iam"
+  source                          = "./terraform/modules/iam"
   cluster_name                    = var.cluster_name
   enable_vpc_cni                  = true
-  enable_ebs_csi                  = false
   enable_cloudwatch               = true
-  enable_load_balancer_controller = false
-  enable_external_dns             = false
-  enable_loki                     = false
+
+
 }
 
 module "ecr" {
-  source           = "./modules/ecr"
+  source           = "./terraform/modules/ecr"
   ecr_repositories = var.ecr_repositories
 }

@@ -16,13 +16,15 @@ spec:
     spec:
       automountServiceAccountToken: false
       securityContext:
+        seccompProfile:
+          type: RuntimeDefault
         runAsNonRoot: true
         runAsUser: 101
         runAsGroup: 101
         fsGroup: 101
       containers:
         - name: frontend
-          image: {{ .Values.frontend.image }}
+          image: {{ .Values.frontend.image.repsitory }}:{{ .Values.frontend.image.tag }}
           imagePullPolicy: Always
           ports:
             - name: http

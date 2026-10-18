@@ -1,18 +1,18 @@
 # damolak_task
 # ShopLite: EKS Microservices DevOps Challenge
 
-A browser-accessible demo with a frontend and two independent Node.js APIs. Includes Docker, non-root containers, Kubernetes manifests, Terraform for AWS infrastructure, GitHub Actions CI/CD using GitHub OIDC, ECR, and CloudWatch logging guidance.
+A browser-accessible demo with a frontend and two independent Node.js APIs. Includes Docker, non-root containers, Kubernetes manifests, Terraform for AWS infrastructure, GitHub Actions CI/CD using AWS ACCESS KEYS, ECR, and CloudWatch logging guidance.
 
 ## Architecture
 
-Browser → AWS Network Load Balancer → Nginx frontend → Catalog API / Orders API. GitHub Actions tests and scans code, builds immutable SHA-tagged images, pushes them to ECR, and deploys to EKS. Terraform creates a VPC, public/private subnets, one NAT gateway, EKS, managed nodes, ECR repositories, and a restricted GitHub OIDC deployment role.
+Browser → AWS Network Load Balancer → Nginx frontend → Catalog API / Orders API. GitHub Actions tests and scans code, builds immutable SHA-tagged images, pushes them to ECR, and deploys to EKS. Terraform creates a VPC, public/private subnets, one NAT gateway, EKS, managed nodes, ECR repositorieS.
 
 ## Run locally first
 
 Requirements: Docker Engine and Docker Compose.
 
 ```bash
-docker compose up --build
+docker compose up --build -d
 ```
 
 Open **http://localhost:8080**. The dashboard lists products and sample orders and lets you submit a demo order. Press Ctrl+C to stop; `docker compose down` cleans up containers.
@@ -22,7 +22,7 @@ Open **http://localhost:8080**. The dashboard lists products and sample orders a
 > AWS resources cost money. The sample uses EKS managed nodes and a NAT Gateway, which can be significant. Review `terraform plan`, region availability, quotas, and pricing before applying. Never commit state files or credentials.
 
 1. Create a GitHub repository and push this folder to its `main` branch.
-2. Copy `terraform/terraform.tfvars.example` to `terraform/terraform.tfvars`; set `github_owner` and `github_repo` accurately. Defaults use `eu-north-1`; change region/version if needed and supported by EKS.
+2. Copy `terraform/terraform.tfvars` to `terraform/terraform.tfvars`; set `github_owner` and `github_repo` accurately. Defaults use `eu-north-1`; change region/version if needed and supported by EKS.
 3. Run:
 
    ```bash
@@ -65,7 +65,5 @@ Container stdout/stderr is available through `kubectl logs`. For managed metrics
 
 - Demo APIs use static/in-memory data and do not persist orders or implement authentication.
 - HTTP-only public NLB; use TLS, DNS, WAF/edge controls as appropriate.
-- Terraform state is local. For a team, configure encrypted/versioned S3 remote state and locking before shared use.
 - The GitHub deployment role has cluster-admin access scoped to the exact repository and main branch for straightforward challenge deployment. A production implementation should use least-privilege Kubernetes RBAC, GitHub Environment approvals, protected branches, pinned third-party Actions by full commit SHA, image signing, SBOMs, policy checks, and separated infrastructure/application roles.
-- The GitHub OIDC provider is account-wide. If one already exists, import/reuse it rather than creating a duplicate.
-- The sample has not been applied to your AWS account; run `terraform validate` and inspect the plan in your environment.
+- Use GitHub OIDC  in place of AWS Credentials
