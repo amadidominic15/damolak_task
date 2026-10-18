@@ -7,7 +7,7 @@ on:
       - main
     paths:
       - "app/**"
-      - ".github/workflows/application.yml"
+      - ".github/workflows/application.yaml"
 
   workflow_dispatch:
 

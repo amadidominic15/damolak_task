@@ -7,7 +7,7 @@ on:
       - "*.tf"
       - "*.tfvars"
       - "modules/**"
-      - ".github/workflows/infrastructure.yml"
+      - ".github/workflows/infrastructure.yaml"
   pull_request:
     branches:
       - main
@@ -15,7 +15,7 @@ on:
       - "*.tf"
       - "*.tfvars"
       - "modules/**"
-      - ".github/workflows/infrastructure.yml"
+      - ".github/workflows/infrastructure.yaml"
 
   workflow_dispatch:
 
