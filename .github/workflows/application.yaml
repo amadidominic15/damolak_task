@@ -29,13 +29,76 @@ env:
   AWS_REGION: eu-north-1
 
 jobs:
+  # -------------------------------------------------
+  # Decide whether this application run should proceed
+  # -------------------------------------------------
+  should-run:
+    name: Decide whether to run application
+    runs-on: ubuntu-latest
+    outputs:
+      run_app: ${{ steps.decide.outputs.run_app }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide
+        id: decide
+        run: |
+          set -euo pipefail
+
+          # 1. Triggered by infrastructure workflow
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            if [ "${{ github.event.workflow_run.conclusion }}" = "success" ]; then
+              echo "Triggered by successful infrastructure run → proceed"
+              echo "run_app=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "Triggered by failed infrastructure run → skip"
+              echo "run_app=false" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          # 2. Manual dispatch → always run
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch → proceed"
+            echo "run_app=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 3. Push event
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+
+          # New branch / first commit edge case
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "run_app=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # If this commit also changed infrastructure files,
+          # skip — the infrastructure pipeline owns this commit
+          # and will trigger us via workflow_run after success.
+          INFRA_CHANGED=$(git diff --name-only "$BEFORE" "$AFTER" \
+            | grep -E '(\.tf$|\.tfvars$|^modules/|\.github/workflows/infrastructure\.yaml)' || true)
+
+          if [ -n "$INFRA_CHANGED" ]; then
+            echo "Infrastructure files also changed in this commit:"
+            echo "$INFRA_CHANGED"
+            echo "→ Skipping application pipeline. Infrastructure will trigger it on success."
+            echo "run_app=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only application / Helm files changed → proceed"
+            echo "run_app=true" >> "$GITHUB_OUTPUT"
+          fi
+
   resolve-source:
     name: Resolve Application Source
+    needs: should-run
+    if: needs.should-run.outputs.run_app == 'true'
     runs-on: ubuntu-latest
-    # Only proceed on push / manual run, or when the infrastructure workflow succeeded
-    if: |
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
 
     outputs:
       source_sha: ${{ steps.source.outputs.source_sha }}
@@ -60,7 +123,10 @@ jobs:
 
   test-and-scan:
     name: Test and Scan Applications
-    needs: resolve-source
+    needs:
+      - should-run
+      - resolve-source
+    if: needs.should-run.outputs.run_app == 'true'
     runs-on: ubuntu-latest
 
     strategy:
@@ -111,8 +177,10 @@ jobs:
   build-scan-push:
     name: Build, Scan and Push Images
     needs:
+      - should-run
       - resolve-source
       - test-and-scan
+    if: needs.should-run.outputs.run_app == 'true'
     runs-on: ubuntu-latest
 
     strategy:
@@ -182,8 +250,10 @@ jobs:
   update-helm:
     name: Update Helm Image Tags
     needs:
+      - should-run
       - resolve-source
       - build-scan-push
+    if: needs.should-run.outputs.run_app == 'true'
     runs-on: ubuntu-latest
 
     permissions:
@@ -246,7 +316,9 @@ jobs:
   deploy:
     name: Deploy ShopLite with Helm
     needs:
+      - should-run
       - update-helm
+    if: needs.should-run.outputs.run_app == 'true'
     runs-on: ubuntu-latest
 
     permissions:

@@ -77,9 +77,7 @@ jobs:
       - name: Terraform plan
         if: github.event_name != 'pull_request'
         run: |
-          terraform plan \
-            -input=false \
-            -out=tfplan
+          terraform plan -input=false -out=tfplan
 
       - name: Terraform apply
         if: success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
