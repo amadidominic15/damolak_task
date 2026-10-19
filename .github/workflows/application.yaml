@@ -294,7 +294,7 @@ jobs:
             --namespace shoplite \
             --create-namespace \
             --wait \
-            --timeout 10m \
+            --timeout 3m \
             --atomic
 
       - name: Verify deployment
