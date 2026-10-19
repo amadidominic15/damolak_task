@@ -11,11 +11,18 @@ on:
 
   workflow_dispatch:
 
+  workflow_run:
+    workflows: ["ShopLite Infrastructure CI/CD"]
+    types:
+      - completed
+    branches:
+      - main
+
 permissions:
   contents: read
 
 concurrency:
-  group: shoplite-application-production
+  group: shoplite-production
   cancel-in-progress: false
 
 env:
@@ -25,6 +32,10 @@ jobs:
   resolve-source:
     name: Resolve Application Source
     runs-on: ubuntu-latest
+    # Only proceed on push / manual run, or when the infrastructure workflow succeeded
+    if: |
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
 
     outputs:
       source_sha: ${{ steps.source.outputs.source_sha }}
@@ -102,7 +113,6 @@ jobs:
     needs:
       - resolve-source
       - test-and-scan
-
     runs-on: ubuntu-latest
 
     strategy:
@@ -174,7 +184,6 @@ jobs:
     needs:
       - resolve-source
       - build-scan-push
-
     runs-on: ubuntu-latest
 
     permissions:
@@ -238,7 +247,6 @@ jobs:
     name: Deploy ShopLite with Helm
     needs:
       - update-helm
-
     runs-on: ubuntu-latest
 
     permissions:

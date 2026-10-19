@@ -24,7 +24,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: shoplite-production-infrastructure
+  group: shoplite-production
   cancel-in-progress: false
 
 env:
@@ -85,12 +85,4 @@ jobs:
         if: success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: terraform apply -input=false -auto-approve tfplan
 
-      - name: Trigger application deployment workflow
-        if: success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh workflow run application.yaml \
-            --ref main \
-            --repo "$GITHUB_REPOSITORY"
       
